@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Download, Play, RefreshCw, FileText, User, Server, File, Calendar, AlertTriangle, Check, X } from 'lucide-react';
+import { Download, Play, Plus, User, Calendar, X, Check } from 'lucide-react';
 import { AppShell } from './components/layout/AppShell';
 import { TimelineExplorer } from './components/timeline/TimelineExplorer';
 import { EvidenceVault } from './components/evidence/EvidenceVault';
@@ -135,11 +135,12 @@ function mapBackendEvidenceToRecord(e: BackendEvidence, index: number): Evidence
     status,
     source_device: e.source,
     recorded_by: 'local-demo-user',
+    backend_id: e.id,
   };
 }
 
 function App() {
-  const [activeRoute, setActiveRoute] = useState<'overview' | 'timeline' | 'vault' | 'detection' | 'report'>('overview');
+  const [activeRoute, setActiveRoute] = useState<'overview' | 'timeline' | 'vault' | 'detection' | 'cases' | 'report'>('overview');
   const [summary, setSummary] = useState<Summary | null>(null);
   const [events, setEvents] = useState<BackendEvent[]>([]);
   const [alerts, setAlerts] = useState<BackendAlert[]>([]);
@@ -151,6 +152,13 @@ function App() {
   const [uploading, setUploading] = useState(false);
   const [demoLoading, setDemoLoading] = useState(false);
   const [globalLoading, setGlobalLoading] = useState(false);
+
+  const [selectedCase, setSelectedCase] = useState<Case | null>(null);
+  const [showCreateCase, setShowCreateCase] = useState(false);
+  const [caseForm, setCaseForm] = useState({ title: '', description: '', assigned_to: '', deadline: '' });
+  const [noteInput, setNoteInput] = useState('');
+  const [closeInput, setCloseInput] = useState('');
+  const [caseError, setCaseError] = useState<string | null>(null);
 
   const API_TIMEOUT = 10000;
   const fetching = useRef(false);
@@ -282,6 +290,123 @@ function App() {
     }
   }
 
+  async function createCase() {
+    if (!caseForm.title.trim()) return;
+    setGlobalLoading(true);
+    setCaseError(null);
+    try {
+      const res = await fetchWithTimeout(`${API}/cases`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(caseForm),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setShowCreateCase(false);
+      setCaseForm({ title: '', description: '', assigned_to: '', deadline: '' });
+      await fetchAll();
+    } catch (err: unknown) {
+      setCaseError(err instanceof Error ? err.message : 'Failed to create case.');
+    } finally {
+      setGlobalLoading(false);
+    }
+  }
+
+  async function viewCase(caseId: string) {
+    setGlobalLoading(true);
+    try {
+      const res = await fetchWithTimeout(`${API}/cases/${caseId}`);
+      if (!res.ok) throw new Error(await res.text());
+      const detailed = await res.json();
+      setSelectedCase(detailed);
+      setShowCreateCase(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setGlobalLoading(false);
+    }
+  }
+
+  async function updateCaseStatus(caseId: string, status: string) {
+    setGlobalLoading(true);
+    try {
+      const res = await fetchWithTimeout(`${API}/cases/${caseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await fetchAll();
+      if (selectedCase?.id === caseId) {
+        const res2 = await fetchWithTimeout(`${API}/cases/${caseId}`);
+        if (res2.ok) {
+          setSelectedCase(await res2.json());
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setGlobalLoading(false);
+    }
+  }
+
+  async function addCaseNote(caseId: string, note: string, actor: string = 'demo-analyst') {
+    if (!note.trim()) return;
+    setGlobalLoading(true);
+    try {
+      const res = await fetchWithTimeout(`${API}/cases/${caseId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note, actor }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const noteRes = await res.json();
+      await fetchAll();
+      if (selectedCase?.id === caseId) {
+        setSelectedCase((prev) =>
+          prev ? { ...prev, notes: [...(prev.notes ?? []), noteRes] } : prev,
+        );
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setGlobalLoading(false);
+      setNoteInput('');
+    }
+  }
+
+  async function closeCase(caseId: string, note: string, actor: string = 'demo-analyst') {
+    if (!note.trim()) return;
+    setGlobalLoading(true);
+    try {
+      const res = await fetchWithTimeout(`${API}/cases/${caseId}/close`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note, actor }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await fetchAll();
+      setSelectedCase(null);
+      setCloseInput('');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setGlobalLoading(false);
+    }
+  }
+
+  function statusBadgeColor(status: string): string {
+    switch (status) {
+      case 'Open':
+        return 'text-[#FF2D95]';
+      case 'Under review':
+        return 'text-[#fbbf24]';
+      case 'Closed':
+        return 'text-[#22C55E]';
+      default:
+        return 'text-[#94A3B8]';
+    }
+  }
+
   function exportReport() {
     window.open(`${API}/report.pdf`, '_blank');
   }
@@ -302,7 +427,14 @@ function App() {
     <div className="min-h-screen bg-[#0A0A0A] text-white">
       <AppShell
         activeRoute={activeRoute}
-        onRouteChange={(route: string) => setActiveRoute(route as 'overview' | 'timeline' | 'vault' | 'detection' | 'report')}
+        onRouteChange={(route: string) => {
+        const r = route as 'overview' | 'timeline' | 'vault' | 'detection' | 'cases' | 'report';
+        if (r === 'cases') {
+          setSelectedCase(null);
+          setShowCreateCase(false);
+        }
+        setActiveRoute(r);
+      }}
         caseId="CASE-2026-09A"
       >
         {activeRoute === 'overview' && (
@@ -427,6 +559,279 @@ function App() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeRoute === 'cases' && (
+          <div className="space-y-6">
+            <div className="bg-[#121216] rounded-lg border border-[#007BA7]/20 p-6 shadow-lg">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-xl font-bold text-white tracking-wide">Case Management</h2>
+                  <p className="text-xs text-[#64748B] mt-1">Create, track, and close investigation cases.</p>
+                </div>
+                {!selectedCase && !showCreateCase && (
+                  <button
+                    onClick={() => setShowCreateCase(true)}
+                    className="bg-[#FF2D95] hover:bg-[#FF2D95]/80 text-white font-bold text-xs px-4 py-2 rounded transition-all shadow-[0_0_15px_rgba(255,45,149,0.4)] flex items-center gap-2"
+                  >
+                    <Plus size={14} /> New Case
+                  </button>
+                )}
+              </div>
+              {showCreateCase && (
+                <div className="bg-[#0A0A0A] rounded border border-[#007BA7]/20 p-5 space-y-4">
+                  <h3 className="text-sm font-bold text-white">New Investigation Case</h3>
+                  {caseError && <p className="text-xs text-[#FF2D95]">{caseError}</p>}
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-[#94A3B8] font-mono">Case Title</label>
+                      <input
+                        type="text"
+                        value={caseForm.title}
+                        onChange={(e) => setCaseForm({ ...caseForm, title: e.target.value })}
+                        className="w-full bg-[#121216] border border-[#007BA7]/30 rounded px-3 py-2 text-sm text-white focus:border-[#FF2D95] focus:outline-none transition-colors"
+                        placeholder="e.g. Suspicious login investigation"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-[#94A3B8] font-mono">Description</label>
+                      <textarea
+                        value={caseForm.description}
+                        onChange={(e) => setCaseForm({ ...caseForm, description: e.target.value })}
+                        className="w-full bg-[#121216] border border-[#007BA7]/30 rounded px-3 py-2 text-sm text-white focus:border-[#FF2D95] focus:outline-none transition-colors"
+                        placeholder="Case description or summary"
+                        rows={3}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-[#94A3B8] font-mono">Assigned To</label>
+                      <input
+                        type="text"
+                        value={caseForm.assigned_to}
+                        onChange={(e) => setCaseForm({ ...caseForm, assigned_to: e.target.value })}
+                        className="w-full bg-[#121216] border border-[#007BA7]/30 rounded px-3 py-2 text-sm text-white focus:border-[#FF2D95] focus:outline-none transition-colors"
+                        placeholder="Assignee name"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-[#94A3B8] font-mono">Deadline</label>
+                      <input
+                        type="datetime-local"
+                        value={caseForm.deadline}
+                        onChange={(e) => setCaseForm({ ...caseForm, deadline: e.target.value })}
+                        className="w-full bg-[#121216] border border-[#007BA7]/30 rounded px-3 py-2 text-sm text-white focus:border-[#FF2D95] focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={createCase}
+                      disabled={!caseForm.title.trim() || globalLoading}
+                      className="bg-[#007BA7] hover:bg-[#007BA7]/80 text-white font-bold text-xs px-4 py-2 rounded transition-all disabled:opacity-60 flex items-center gap-2"
+                    >
+                      <Plus size={12} /> Create Case
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowCreateCase(false);
+                        setCaseForm({ title: '', description: '', assigned_to: '', deadline: '' });
+                        setCaseError(null);
+                      }}
+                      className="border border-[#007BA7]/30 hover:bg-[#121216]/60 text-white font-bold text-xs px-4 py-2 rounded transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              {!showCreateCase && !selectedCase && (
+                cases.length === 0 ? (
+                  <div className="p-6 text-center text-[#64748B] bg-[#0A0A0A] rounded border border-[#007BA7]/15">
+                    No cases created yet. Click "New Case" to get started.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-[#0A0A0B] text-[#94A3B8] border-b border-[#007BA7]/20">
+                        <tr>
+                          <th className="p-3">CASE ID</th>
+                          <th className="p-3">TITLE</th>
+                          <th className="p-3">STATUS</th>
+                          <th className="p-3">ASSIGNEE</th>
+                          <th className="p-3">DEADLINE</th>
+                          <th className="p-3">CREATED</th>
+                          <th className="p-3">NOTES</th>
+                          <th className="p-3 text-right">ACTION</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#007BA7]/10">
+                        {cases.map((c) => (
+                          <tr key={c.id} className="hover:bg-[#0A0A0B] transition-colors">
+                            <td className="p-3 text-[#007BA7]">{c.id.substring(0, 8)}…</td>
+                            <td className="p-3 font-medium text-white">{c.title}</td>
+                            <td className="p-3">
+                              <span className={`inline-flex items-center text-xs ${statusBadgeColor(c.status)}`}>
+                                {c.status}
+                              </span>
+                            </td>
+                            <td className="p-3 text-[#94A3B8] flex items-center gap-1">
+                              <User size={12} />{c.assigned_to}
+                            </td>
+                            <td className="p-3 text-[#94A3B8] flex items-center gap-1">
+                              <Calendar size={12} />{c.deadline ? new Date(c.deadline).toLocaleDateString() : '—'}
+                            </td>
+                            <td className="p-3 text-[#94A3B8]">{new Date(c.created_at).toLocaleDateString()}</td>
+                            <td className="p-3 text-[#007BA7]">{c.note_count}</td>
+                            <td className="p-3 text-right">
+                              <button
+                                onClick={() => viewCase(c.id)}
+                                className="text-[#007BA7] hover:text-[#FF2D95] px-2 py-1 rounded transition-colors text-xs"
+                              >
+                                Open
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              )}
+              {selectedCase && (
+                <div className="bg-[#0A0A0A] rounded border border-[#007BA7]/20 p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-white">{selectedCase.title}</h3>
+                    <button
+                      onClick={() => setSelectedCase(null)}
+                      className="text-[#94A3B8] hover:text-[#FF2D95] p-1 rounded"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                    <div>
+                      <span className="text-[#64748B]">ID</span>
+                      <span className="text-[#007BA7] ml-2 font-mono">{selectedCase.id}</span>
+                    </div>
+                    <div>
+                      <span className="text-[#64748B]">Status</span>
+                      <span className={`ml-2 ${statusBadgeColor(selectedCase.status)}`}>
+                        {selectedCase.status}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[#64748B]">Assignee</span>
+                      <span className="text-[#94A3B8] ml-2">{selectedCase.assigned_to}</span>
+                    </div>
+                    <div className="md:col-span-3">
+                      <span className="text-[#64748B]">Description</span>
+                      <p className="text-[#94A3B8] mt-1">{selectedCase.description || 'No description provided.'}</p>
+                    </div>
+                    <div>
+                      <span className="text-[#64748B]">Deadline</span>
+                      <span className="text-[#94A3B8] ml-2 flex items-center gap-1">
+                        <Calendar size={12} />
+                        {selectedCase.deadline ? new Date(selectedCase.deadline).toLocaleDateString() : 'No deadline'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[#64748B]">Created</span>
+                      <span className="text-[#94A3B8] ml-2">{new Date(selectedCase.created_at).toLocaleString()}</span>
+                    </div>
+                    <div>
+                      <span className="text-[#64748B]">Updated</span>
+                      <span className="text-[#94A3B8] ml-2">{new Date(selectedCase.updated_at).toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-2 border-t border-[#007BA7]/10">
+                    {selectedCase.status === 'Open' && (
+                      <button
+                        onClick={() => updateCaseStatus(selectedCase.id, 'Under review')}
+                        className="text-xs border border-[#fbbf24]/30 text-[#fbbf24] px-3 py-1 rounded hover:bg-[#121216]/60 transition-colors"
+                      >
+                        Mark Under Review
+                      </button>
+                    )}
+                    {selectedCase.status !== 'Closed' && (
+                      <button
+                        onClick={() => setCloseInput('')}
+                        className="text-xs border border-[#FF2D95]/30 text-[#FF2D95] px-3 py-1 rounded hover:bg-[#121216]/60 transition-colors"
+                      >
+                        Close Case
+                      </button>
+                    )}
+                  </div>
+
+                  {closeInput !== '' && (
+                    <div className="bg-[#121216] rounded border border-[#007BA7]/20 p-4 space-y-3">
+                      <h4 className="text-xs font-bold text-white">Closure Decision</h4>
+                      <textarea
+                        value={closeInput}
+                        onChange={(e) => setCloseInput(e.target.value)}
+                        className="w-full bg-[#0A0A0A] border border-[#007BA7]/30 rounded px-3 py-2 text-xs text-white focus:border-[#FF2D95] focus:outline-none transition-colors"
+                        placeholder="Enter closure decision..."
+                        rows={2}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => closeCase(selectedCase.id, closeInput)}
+                          disabled={!closeInput.trim() || globalLoading}
+                          className="bg-[#FF2D95] hover:bg-[#FF2D95]/80 text-white font-bold text-xs px-3 py-1 rounded transition-colors disabled:opacity-60 flex items-center gap-1"
+                        >
+                          <Check size={12} /> Confirm Close
+                        </button>
+                        <button
+                          onClick={() => setCloseInput('')}
+                          className="border border-[#007BA7]/30 hover:bg-[#121216]/60 text-xs text-[#94A3B8] px-3 py-1 rounded transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-[#007BA7]/10">
+                    <h4 className="text-xs font-bold text-[#94A3B8] mb-2">
+                      Notes ({selectedCase.notes?.length ?? 0})
+                    </h4>
+                    {selectedCase.notes && selectedCase.notes.length > 0 ? (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {selectedCase.notes.map((note) => (
+                          <div key={note.id} className="text-xs bg-[#121216] rounded p-2 border border-[#007BA7]/10">
+                            <span className="text-[#94A3B8] font-mono">[{note.timestamp}] {note.actor}:</span>
+                            <p className="text-[#94A3B8] mt-1">{note.note}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-[#64748B]">No notes yet.</p>
+                    )}
+                    <div className="mt-3 flex gap-2">
+                      <input
+                        type="text"
+                        value={noteInput}
+                        onChange={(e) => setNoteInput(e.target.value)}
+                        placeholder="Add a note..."
+                        className="flex-1 bg-[#121216] border border-[#007BA7]/30 rounded px-3 py-2 text-xs text-white focus:border-[#FF2D95] focus:outline-none transition-colors"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && noteInput.trim()) {
+                            addCaseNote(selectedCase.id, noteInput.trim());
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={() => addCaseNote(selectedCase.id, noteInput.trim())}
+                        disabled={!noteInput.trim() || globalLoading}
+                        className="bg-[#007BA7] hover:bg-[#007BA7]/80 text-white font-bold text-xs px-3 py-1.5 rounded transition-colors disabled:opacity-60"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

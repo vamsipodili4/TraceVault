@@ -31,6 +31,7 @@ export interface EvidenceRecord {
   status: IntegrityStatus;
   source_device?: string;
   recorded_by?: string;
+  backend_id?: string;
 }
 
 export interface TimelineEvent {

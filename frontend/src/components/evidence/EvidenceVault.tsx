@@ -5,12 +5,14 @@ import { EvidenceRecord, IntegrityStatus } from '../../theme/tokens';
 interface EvidenceVaultProps {
   records: EvidenceRecord[];
   onUploadSuccess: () => void;
+  onBackendVerify?: (backendId: string) => Promise<unknown>;
 }
 
-export const EvidenceVault: React.FC<EvidenceVaultProps> = ({ records, onUploadSuccess }) => {
+export const EvidenceVault: React.FC<EvidenceVaultProps> = ({ records, onUploadSuccess, onBackendVerify }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [verificationFeedback, setVerificationFeedback] = useState<{ id: number; message: string; pass: boolean } | null>(null);
+  const [backendVerifyFeedback, setBackendVerifyFeedback] = useState<{ id: number; message: string; pass: boolean } | null>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -67,6 +69,33 @@ export const EvidenceVault: React.FC<EvidenceVaultProps> = ({ records, onUploadS
       }
     };
     input.click();
+  };
+
+  const verifyOnBackend = async (record: EvidenceRecord) => {
+    if (!record.backend_id || !onBackendVerify) return;
+    try {
+      const result = await onBackendVerify(record.backend_id);
+      if (result && typeof result === 'object' && 'status' in result) {
+        const r = result as { status: string; detail?: string };
+        setBackendVerifyFeedback({
+          id: record.id,
+          message: r.detail || r.status,
+          pass: r.status === 'Verified',
+        });
+      } else {
+        setBackendVerifyFeedback({
+          id: record.id,
+          message: 'Verification completed. Refresh to see updated status.',
+          pass: true,
+        });
+      }
+    } catch (err: unknown) {
+      setBackendVerifyFeedback({
+        id: record.id,
+        message: err instanceof Error ? err.message : 'Verification failed.',
+        pass: false,
+      });
+    }
   };
 
   const statusColor = (status: IntegrityStatus) => {

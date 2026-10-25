@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldAlert, Database, Clock, FileText, Activity, Menu, X, Terminal, Lock } from 'lucide-react';
+import { ShieldAlert, Database, Clock, FileText, Activity, Menu, X, Terminal, Lock, Folder } from 'lucide-react';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -16,6 +16,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children, activeRoute, onRou
     { id: 'timeline', label: 'Timeline Explorer', icon: Clock },
     { id: 'vault', label: 'Evidence Vault', icon: Database },
     { id: 'detection', label: 'Detection Center', icon: ShieldAlert },
+    { id: 'cases', label: 'Case Management', icon: Folder },
     { id: 'report', label: 'Report Manifest', icon: FileText },
   ];
 

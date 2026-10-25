@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --cyber-base: #0A0A0A;
+  --cyber-surface: #121216;
+  --cyber-surface-hover: #181822;
+  --cyber-border: rgba(0, 123, 167, 0.25);
+  --cerulean: #007BA7;
+  --cerulean-glow: rgba(0, 123, 167, 0.45);
+  --neon-rose: #FF2D95;
+  --neon-rose-glow: rgba(255, 45, 149, 0.45);
+  --text-primary: #FFFFFF;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Manrope', system-ui, sans-serif;
+  background: #0A0A0A;
+  color: #FFFFFF;
+}
+
+button, input, select, textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+select {
+  background: #0A0A0A;
+  color: #FFFFFF;
+  border: 1px solid rgba(0, 123, 167, 0.25);
+}
+
+select option {
+  background: #0A0A0A;
+  color: #FFFFFF;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0A0A0A;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #181822;
+  border: 1px solid rgba(0, 123, 167, 0.25);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #007BA7;
+}

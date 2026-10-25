@@ -1,7 +1,0 @@
-timestamp,source,event_type,username,ip_address,asset,details
-2026-10-24T09:02:00+05:30,auth.log,login_success,accounting.user,203.0.113.44,acct-ws-03,Successful login from an unfamiliar demo IP address.
-2026-10-24T09:05:00+05:30,audit.json,privilege escalation,accounting.user,203.0.113.44,acct-server-01,Admin role granted in synthetic test event.
-2026-10-24T09:08:00+05:30,file-events.csv,mass file modification,accounting.user,203.0.113.44,acct-share-01,Mass file modification observed in synthetic test data.
-2026-10-24T09:09:00+05:30,auth.log,failed login,backup.operator,198.51.100.17,acct-server-01,Authentication failure; synthetic demo event.
-2026-10-24T09:10:00+05:30,auth.log,login_success,accounting.user,198.51.100.22,acct-ws-03,Same demo account observed from another IP; may have benign explanations.
-MODIFIED
